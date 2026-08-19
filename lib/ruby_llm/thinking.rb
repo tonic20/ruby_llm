@@ -5,18 +5,25 @@ module RubyLLM
   class Thinking
     attr_reader :text, :signature
 
-    def initialize(text: nil, signature: nil)
+    def initialize(text: nil, signature: nil, redacted: false)
       @text = text
       @signature = signature
+      @redacted = redacted
     end
 
-    def self.build(text: nil, signature: nil)
+    # True when +signature+ holds a provider-redacted reasoning payload rather than a
+    # signature over visible reasoning text. Replaying one as the other is rejected.
+    def redacted?
+      @redacted
+    end
+
+    def self.build(text: nil, signature: nil, redacted: false)
       text = nil if text.is_a?(String) && text.empty?
       signature = nil if signature.is_a?(String) && signature.empty?
 
       return nil if text.nil? && signature.nil?
 
-      new(text: text, signature: signature)
+      new(text: text, signature: signature, redacted: redacted)
     end
 
     def pretty_print(printer)

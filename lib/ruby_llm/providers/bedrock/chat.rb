@@ -51,12 +51,13 @@ module RubyLLM
 
           content_blocks = data.dig('output', 'message', 'content') || []
           usage = data['usage'] || {}
-          thinking_text, thinking_signature = parse_thinking(content_blocks)
+          thinking_text, thinking_signature, thinking_redacted = parse_thinking(content_blocks)
 
           Message.new(
             role: :assistant,
             content: parse_text_content(content_blocks),
-            thinking: Thinking.build(text: thinking_text, signature: thinking_signature),
+            thinking: Thinking.build(text: thinking_text, signature: thinking_signature,
+                                     redacted: thinking_redacted),
             tool_calls: parse_tool_calls(content_blocks),
             input_tokens: input_tokens(usage),
             output_tokens: usage['outputTokens'],
@@ -336,7 +337,11 @@ module RubyLLM
                 }.compact
               }
             }
-          elsif thinking.signature
+          # A signature with no text and no redacted marker is a signature over reasoning
+          # text we never captured -- streaming delivers signature_delta with no text
+          # deltas. Replaying that as redactedContent makes Bedrock reject the whole turn
+          # ("Invalid `data` in `redacted_thinking` block"), so emit nothing.
+          elsif thinking.redacted? && thinking.signature
             {
               reasoningContent: {
                 redactedContent: thinking.signature
@@ -354,13 +359,17 @@ module RubyLLM
           text = +''
           signature = nil
 
+          redacted = false
           content_blocks.each do |block|
-            chunk_text, chunk_signature = parse_reasoning_content_block(block)
+            chunk_text, chunk_signature, chunk_redacted = parse_reasoning_content_block(block)
             text << chunk_text if chunk_text
-            signature ||= chunk_signature
+            next if signature
+
+            signature = chunk_signature
+            redacted = chunk_redacted if chunk_signature
           end
 
-          [text.empty? ? nil : text, signature]
+          [text.empty? ? nil : text, signature, redacted]
         end
 
         def parse_reasoning_content_block(block)
@@ -370,8 +379,12 @@ module RubyLLM
           reasoning_text = reasoning_content['reasoningText'] || {}
           text = reasoning_text['text'].is_a?(String) ? reasoning_text['text'] : nil
           signature = reasoning_text['signature'] if reasoning_text['signature'].is_a?(String)
-          signature ||= reasoning_content['redactedContent'] if reasoning_content['redactedContent'].is_a?(String)
-          [text, signature]
+          redacted = false
+          if signature.nil? && reasoning_content['redactedContent'].is_a?(String)
+            signature = reasoning_content['redactedContent']
+            redacted = true
+          end
+          [text, signature, redacted]
         end
 
         def parse_tool_calls(content_blocks)

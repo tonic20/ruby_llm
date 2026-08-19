@@ -142,7 +142,8 @@ module RubyLLM
             content: extract_content_delta(event),
             thinking: Thinking.build(
               text: extract_thinking_delta(event),
-              signature: extract_thinking_signature(event)
+              signature: extract_thinking_signature(event),
+              redacted: redacted_thinking_event?(event)
             ),
             tool_calls: extract_tool_calls(event),
             input_tokens: extract_input_tokens(metadata_usage, usage, message_usage),
@@ -253,6 +254,18 @@ module RubyLLM
           return event.dig('delta', 'signature') if event.dig('delta', 'type') == 'signature_delta'
 
           nil
+        end
+
+        # True only when the signature came from a redactedContent payload. A signature
+        # over visible reasoning text must NOT be replayed as redacted content.
+        def redacted_thinking_event?(event)
+          start = event.dig('contentBlockStart', 'start', 'reasoningContent')
+          return false unless start.is_a?(Hash)
+
+          reasoning_text = start['reasoningText'] || {}
+          return false if reasoning_text['signature']
+
+          start['redactedContent'].is_a?(String)
         end
 
         def extract_signature_from_start(event)
