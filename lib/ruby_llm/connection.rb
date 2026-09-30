@@ -134,6 +134,9 @@ module RubyLLM
         Timeout::Error,
         Faraday::TimeoutError,
         Faraday::ConnectionFailed,
+        # SSL_connect "unexpected eof" is raised during the handshake, before the
+        # request body is sent, so a retry cannot double-submit.
+        Faraday::SSLError,
         Faraday::RetriableResponse,
         RubyLLM::RateLimitError,
         RubyLLM::ServerError,

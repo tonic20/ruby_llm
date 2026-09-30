@@ -32,5 +32,13 @@ RSpec.describe RubyLLM::Connection do
 
       expect(retry_options[:methods]).to include(:post)
     end
+
+    it 'retries a TLS handshake failure' do
+      connection = described_class.new(provider, config).connection
+      retry_handler = connection.builder.handlers.find { |handler| handler.klass == Faraday::Retry::Middleware }
+      retry_options = retry_handler.instance_variable_get(:@args).first
+
+      expect(retry_options[:exceptions]).to include(Faraday::SSLError)
+    end
   end
 end

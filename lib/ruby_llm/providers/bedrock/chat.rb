@@ -306,16 +306,31 @@ module RubyLLM
           budget_reasoning_config(thinking)
         end
 
+        # GPT on Bedrock Converse rejects a top-level reasoning_effort (400 unknown_parameter)
+        # and takes the Responses-style reasoning.effort instead, including the 'none' tier.
+        OPENAI_MODEL_ID = /(?:\A|\.)openai\./
+
         def effort_reasoning_config(thinking)
           effort = thinking.respond_to?(:effort) ? thinking.effort : nil
           effort = effort.to_s if effort
-          return nil if effort.nil? || effort.empty? || effort == 'none'
+          return nil if effort.nil? || effort.empty?
+          return { reasoning: { effort: effort } } if openai_model?(@model)
+
+          claude_effort_config(effort)
+        end
+
+        def claude_effort_config(effort)
+          return nil if effort == 'none'
 
           if reasoning_embedded?(@model)
             { reasoning_config: { type: 'enabled', reasoning_effort: effort } }
           else
             { reasoning_effort: effort }
           end
+        end
+
+        def openai_model?(model)
+          OPENAI_MODEL_ID.match?(model.id.to_s)
         end
 
         def budget_reasoning_config(thinking)

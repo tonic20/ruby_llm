@@ -127,5 +127,53 @@ RSpec.describe RubyLLM::Providers::Bedrock::Chat do
         expect(payload).not_to have_key(:outputConfig)
       end
     end
+
+    context 'when the model is an OpenAI model on Bedrock' do
+      let(:model) do
+        instance_double(RubyLLM::Model::Info, id: 'us.openai.gpt-6-sol', max_tokens: nil, metadata: {})
+      end
+
+      it 'renders effort as reasoning.effort, the shape Bedrock accepts for GPT' do
+        payload = render_payload(thinking: RubyLLM::Thinking::Config.new(effort: 'low'))
+
+        expect(payload[:additionalModelRequestFields]).to eq(reasoning: { effort: 'low' })
+      end
+
+      it "passes the 'none' tier through instead of dropping it" do
+        payload = render_payload(thinking: RubyLLM::Thinking::Config.new(effort: 'none'))
+
+        expect(payload[:additionalModelRequestFields]).to eq(reasoning: { effort: 'none' })
+      end
+
+      it 'sends no reasoning fields when no effort is set' do
+        payload = render_payload(thinking: nil)
+
+        expect(payload).not_to have_key(:additionalModelRequestFields)
+      end
+    end
+
+    context 'when the model is a Claude model on Bedrock' do
+      # The effort path reads reasoning_embedded? from Bedrock::Models, which only the
+      # provider class mixes in alongside Chat (module_function makes them private).
+      def render_payload(messages = [], **overrides)
+        harness = Class.new do
+          include RubyLLM::Providers::Bedrock::Chat
+          include RubyLLM::Providers::Bedrock::Models
+        end
+        harness.new.send(:render_payload, messages, **base_args, **overrides)
+      end
+
+      it 'keeps the top-level reasoning_effort field' do
+        payload = render_payload(thinking: RubyLLM::Thinking::Config.new(effort: 'low'))
+
+        expect(payload[:additionalModelRequestFields]).to eq(reasoning_effort: 'low')
+      end
+
+      it "still drops the 'none' tier" do
+        payload = render_payload(thinking: RubyLLM::Thinking::Config.new(effort: 'none'))
+
+        expect(payload).not_to have_key(:additionalModelRequestFields)
+      end
+    end
   end
 end
